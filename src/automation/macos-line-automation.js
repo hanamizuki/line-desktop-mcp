@@ -653,4 +653,176 @@ export class MacOSLineAutomation {
     throw new Error('openDotMenu: no popup window appeared after 2 attempts');
   }
 
+
+  // === clickSaveChat ===
+  async clickSaveChat(menuBounds) {
+    const clickX = menuBounds.x + 62;
+    const clickY = menuBounds.y + 247;
+
+    execSync(`${this.cliclickPath} c:${clickX},${clickY}`);
+
+    // Poll for save sheet (max 5s, every 300ms)
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 300));
+
+      // Check if a save sheet appeared
+      const sheetCheck = await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            try
+              set s to sheet 1 of window 1
+              set desc to description of s
+              if desc contains "儲存" then
+                return "sheet_ok"
+              end if
+              return "sheet_wrong_desc"
+            on error
+              -- Check if a non-sheet window appeared (wrong menu item)
+              set wCount to count of windows
+              if wCount > 1 then
+                return "wrong_window"
+              end if
+              return "waiting"
+            end try
+          end tell
+        end tell
+      `);
+
+      if (sheetCheck === 'sheet_ok') {
+        return;
+      }
+      if (sheetCheck === 'wrong_window') {
+        throw new Error('clickSaveChat: wrong menu item clicked (non-sheet window appeared)');
+      }
+    }
+
+    throw new Error('clickSaveChat: save sheet did not appear within 5s');
+  }
+
+  // === handleSaveDialog ===
+  async handleSaveDialog(targetPath) {
+    // Read current filename
+    const fileName = await this.osa(`
+      tell application "System Events"
+        tell process "${this.appleEsc(this.lineProcessName)}"
+          return value of text field 1 of sheet 1 of window 1
+        end tell
+      end tell
+    `);
+
+    // Check current location
+    const currentLocation = await this.osa(`
+      tell application "System Events"
+        tell process "${this.appleEsc(this.lineProcessName)}"
+          return value of pop up button 1 of sheet 1 of window 1
+        end tell
+      end tell
+    `);
+
+    const targetBasename = targetPath.split('/').filter(s => s).pop();
+    const currentBasename = currentLocation.split('/').filter(s => s).pop();
+
+    if (currentBasename !== targetBasename) {
+      // Press Cmd+Shift+G to open Go To Folder
+      await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            key down {command, shift}
+            keystroke "g"
+            key up {command, shift}
+          end tell
+        end tell
+      `);
+      await new Promise(r => setTimeout(r, 500));
+
+      // Set clipboard to targetPath and paste
+      await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            set the clipboard to "${this.appleEsc(targetPath)}"
+            key down command
+            keystroke "a"
+            key up command
+            key down command
+            keystroke "v"
+            key up command
+          end tell
+        end tell
+      `);
+      await new Promise(r => setTimeout(r, 300));
+
+      // Press Enter to navigate
+      await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            keystroke return
+          end tell
+        end tell
+      `);
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Click the save button
+    await this.osa(`
+      tell application "System Events"
+        tell process "${this.appleEsc(this.lineProcessName)}"
+          click button "儲存" of sheet 1 of window 1
+        end tell
+      end tell
+    `);
+    await new Promise(r => setTimeout(r, 500));
+
+    // Try to click overwrite confirm (may not appear)
+    try {
+      await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            click button "取代" of sheet 1 of window 1
+          end tell
+        end tell
+      `);
+    } catch {
+      // No overwrite dialog, that's fine
+    }
+
+    return fileName;
+  }
+
+  // === waitForFileComplete ===
+  async waitForFileComplete(filePath, timeout = 30000) {
+    const deadline = Date.now() + timeout;
+    let lastSize = -1;
+    let stableCount = 0;
+
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 500));
+
+      try {
+        const stat = fs.statSync(filePath);
+        const currentSize = stat.size;
+
+        if (currentSize > 0 && currentSize === lastSize) {
+          stableCount++;
+          if (stableCount >= 2) {
+            // File size stable for 2 consecutive checks
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const lineCount = content.split('\n').length;
+            const fileName = filePath.split('/').pop();
+            return { filePath, fileName, fileSize: currentSize, lineCount };
+          }
+        } else {
+          stableCount = 0;
+        }
+        lastSize = currentSize;
+      } catch {
+        // File doesn't exist yet
+        lastSize = -1;
+        stableCount = 0;
+      }
+    }
+
+    throw new Error(`waitForFileComplete: timed out waiting for file: ${filePath}`);
+  }
+
 }
