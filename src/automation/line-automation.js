@@ -37,7 +37,8 @@ export class LineAutomation {
 
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
-    const ok = await this.automation.selectChat(chatName);
+    const searchName = chatName.replace(/^[LINE]/, "");
+    const ok = await this.automation.selectChat(searchName);
 
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
 
@@ -85,7 +86,8 @@ export class LineAutomation {
 
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
-    const ok = await this.automation.selectChat(chatName);
+    const searchName = chatName.replace(/^[LINE]/, "");
+    const ok = await this.automation.selectChat(searchName);
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
 
     // Clear search overlay left by selectChat
@@ -110,7 +112,8 @@ export class LineAutomation {
   async saveChatHistory(chatName, savePath, groupDir, maxPageUps = 30) {
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
-    const ok = await this.automation.selectChat(chatName);
+    const searchName = chatName.replace(/^[LINE]/, "");
+    const ok = await this.automation.selectChat(searchName);
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
 
     // Clear search overlay left by selectChat
