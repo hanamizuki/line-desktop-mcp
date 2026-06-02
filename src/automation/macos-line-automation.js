@@ -545,4 +545,21 @@ export class MacOSLineAutomation {
         return { success: false, error: e?.message || String(e) };
       }
     }
+// === getWindowBounds ===
+  async getWindowBounds() {
+    const script = `
+      tell application "System Events"
+        tell process "${this.appleEsc(this.lineProcessName)}"
+          set lineWin to window 1
+          set {xPosition, yPosition} to position of lineWin
+          set {xSize, ySize} to size of lineWin
+          return (xPosition as text) & "," & (yPosition as text) & "," & (xSize as text) & "," & (ySize as text)
+        end tell
+      end tell
+    `;
+    const r = await this.osa(script);
+    const [x, y, width, height] = r.split(',').map(Number);
+    return { x, y, width, height };
+  }
+
 }
