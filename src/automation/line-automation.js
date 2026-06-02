@@ -41,6 +41,10 @@ export class LineAutomation {
 
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
 
+    // Clear search overlay left by selectChat
+    await this.automation.osa("tell application \"System Events\" to key code 53");
+    await new Promise(r => setTimeout(r, 1000));
+
     await this.automation.pageUp(pageUpTimes);
 
     const chatHistory = await this.automation.copyAllChatToClipboard();
@@ -84,6 +88,10 @@ export class LineAutomation {
     const ok = await this.automation.selectChat(chatName);
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
 
+    // Clear search overlay left by selectChat
+    await this.automation.osa("tell application \"System Events\" to key code 53");
+    await new Promise(r => setTimeout(r, 1000));
+
     return await this.automation.sendMessage(chatName, message, autoSend);
   }
 
@@ -104,6 +112,10 @@ export class LineAutomation {
     await this.automation.activateLine();
     const ok = await this.automation.selectChat(chatName);
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
+
+    // Clear search overlay left by selectChat
+    await this.automation.osa("tell application \"System Events\" to key code 53");
+    await new Promise(r => setTimeout(r, 1000));
 
     const scrolled = await this.automation.scrollToLoadHistory(groupDir, maxPageUps);
 

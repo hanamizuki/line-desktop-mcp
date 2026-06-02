@@ -706,7 +706,7 @@ export class MacOSLineAutomation {
     const fileName = await this.osa(`
       tell application "System Events"
         tell process "${this.appleEsc(this.lineProcessName)}"
-          return value of text field 1 of sheet 1 of window 1
+          return value of text field "儲存為：" of splitter group 1 of sheet 1 of window 1
         end tell
       end tell
     `);
@@ -715,7 +715,7 @@ export class MacOSLineAutomation {
     const currentLocation = await this.osa(`
       tell application "System Events"
         tell process "${this.appleEsc(this.lineProcessName)}"
-          return value of pop up button 1 of sheet 1 of window 1
+          return value of pop up button "位置：" of splitter group 1 of sheet 1 of window 1
         end tell
       end tell
     `);
@@ -767,7 +767,7 @@ export class MacOSLineAutomation {
     await this.osa(`
       tell application "System Events"
         tell process "${this.appleEsc(this.lineProcessName)}"
-          click button "儲存" of sheet 1 of window 1
+          click button "儲存" of splitter group 1 of sheet 1 of window 1
         end tell
       end tell
     `);
@@ -778,7 +778,7 @@ export class MacOSLineAutomation {
       await this.osa(`
         tell application "System Events"
           tell process "${this.appleEsc(this.lineProcessName)}"
-            click button "取代" of sheet 1 of window 1
+            click button "取代" of splitter group 1 of sheet 1 of window 1
           end tell
         end tell
       `);
