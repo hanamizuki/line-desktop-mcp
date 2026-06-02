@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-/**
- * export-all-groups.js
- * Batch-export LINE chat histories for all (or primary) groups.
- *
- * Usage:
- *   node src/export-all-groups.js           # export all groups found in savePath
- *   node src/export-all-groups.js --primary # export only config.primaryGroup
- */
-
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -16,128 +7,89 @@ import { fileURLToPath } from 'url';
 import { LineAutomation } from './automation/line-automation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// ── Config ───────────────────────────────────────────────────────────────────
-
-const configPath = path.resolve(__dirname, '../config.json');
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-
+const config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../config.json'), 'utf8'));
 const savePath = config.savePath.replace(/^~/, os.homedir());
-const { primaryGroup, exclude = [], maxPageUps = 30, cooldownMs = 3000 } = config;
-
 const primaryOnly = process.argv.includes('--primary');
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+function log(msg) {
+  console.log(`[${new Date().toISOString()}] ${msg}`);
+}
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-function pgrepRunning(processName) {
+function pgrepRunning(name) {
   try {
-    execSync(`pgrep -x ${processName}`, { stdio: "ignore" });
+    execSync(`pgrep -x ${name}`, { stdio: 'ignore' });
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
-// ── Preflight ─────────────────────────────────────────────────────────────────
-
-async function runPreflightChecks(automation) {
-  if (!pgrepRunning('LINE')) {
-    throw new Error('Preflight failed: LINE is not running (pgrep -x LINE found nothing)');
-  }
-
-  if (!pgrepRunning('WindowServer')) {
-    throw new Error('Preflight failed: WindowServer is not running — no GUI session active');
-  }
-
-  try {
-    await automation.automation.getWindowBounds();
-  } catch (err) {
-    throw new Error();
-  }
-}
-
-// ── Group discovery ──────────────────────────────────────────────────────────
-
-function discoverGroups() {
+function getGroups() {
+  if (primaryOnly) return [config.primaryGroup];
   if (!fs.existsSync(savePath)) {
-    throw new Error();
-  }
-
-  const entries = fs.readdirSync(savePath, { withFileTypes: true });
-  return entries
-    .filter(e => e.isDirectory() && e.name.startsWith('[LINE]'))
-    .map(e => e.name)
-    .filter(name => !exclude.includes(name));
-}
-
-// ── Main ─────────────────────────────────────────────────────────────────────
-
-async function main() {
-  const automation = new LineAutomation();
-
-  console.log('Running preflight checks…');
-  await runPreflightChecks(automation);
-  console.log('Preflight OK\n');
-
-  // Build the list of groups to process
-  let groups;
-  if (primaryOnly) {
-    groups = [primaryGroup];
-    console.log();
-  } else {
-    groups = discoverGroups();
-    console.log();
-  }
-
-  if (groups.length === 0) {
-    console.log('No groups to export. Exiting.');
-    process.exit(0);
-  }
-
-  const results = { ok: [], fail: [] };
-
-  for (const groupName of groups) {
-    const groupDir = path.join(savePath, groupName);
-    console.log();
-
-    try {
-      const result = await automation.saveChatHistory(groupName, savePath, groupDir, maxPageUps);
-      const { fileName, size, lines, scrolled } = result;
-      console.log();
-      results.ok.push(groupName);
-    } catch (err) {
-      console.error();
-      results.fail.push({ groupName, error: err.message });
-    } finally {
-      try {
-        await automation.automation.resetToMainWindow();
-      } catch {
-        // best-effort reset
-      }
-      await sleep(cooldownMs);
-    }
-  }
-
-  // ── Summary ──────────────────────────────────────────────────────────────
-  console.log('\n═══ Summary ═══');
-  console.log();
-  console.log();
-  if (results.fail.length > 0) {
-    console.log('\nFailed groups:');
-    for (const { groupName, error } of results.fail) {
-      console.log();
-    }
+    log(`ERROR: savePath does not exist: ${savePath}`);
     process.exit(1);
   }
-
-  process.exit(0);
+  return fs.readdirSync(savePath, { withFileTypes: true })
+    .filter(e => e.isDirectory() && e.name.startsWith('[LINE]'))
+    .map(e => e.name)
+    .filter(n => !(config.exclude || []).includes(n));
 }
 
-main().catch(err => {
-  console.error('Fatal error:', err.message);
-  process.exit(1);
-});
+async function preflight(automation) {
+  if (!pgrepRunning('LINE')) throw new Error('LINE is not running');
+  if (!pgrepRunning('WindowServer')) throw new Error('No GUI session (WindowServer missing)');
+  try {
+    await automation.automation.getWindowBounds();
+  } catch (e) {
+    throw new Error(`Cannot access LINE window: ${e.message}`);
+  }
+}
+
+async function main() {
+  const mode = primaryOnly ? 'primary only' : 'all groups';
+  log(`=== LINE Export (${mode}) ===`);
+  log(`savePath: ${savePath}`);
+
+  fs.mkdirSync(savePath, { recursive: true });
+
+  const automation = new LineAutomation();
+  log('Running preflight...');
+  await preflight(automation);
+  log('Preflight OK');
+
+  const groups = getGroups();
+  log(`Groups to export: ${groups.length}`);
+  if (groups.length === 0) { log('Nothing to export.'); process.exit(0); }
+
+  const results = [];
+
+  for (const group of groups) {
+    const groupDir = path.join(savePath, group);
+    log(`--- ${group} ---`);
+    try {
+      const result = await automation.saveChatHistory(group, savePath, groupDir, config.maxPageUps || 30);
+      log(`OK: ${result.fileName} (${result.fileSize} bytes, ${result.lineCount} lines, scrolled ${result.scrolled} pages)`);
+      results.push({ group, status: 'ok', ...result });
+    } catch (e) {
+      log(`FAIL: ${e.message}`);
+      results.push({ group, status: 'fail', error: e.message });
+    } finally {
+      try { await automation.automation.resetToMainWindow(); } catch {}
+      await sleep(config.cooldownMs || 3000);
+    }
+  }
+
+  log('=== Summary ===');
+  const ok = results.filter(r => r.status === 'ok').length;
+  const fail = results.filter(r => r.status === 'fail').length;
+  log(`OK: ${ok}, FAIL: ${fail}, TOTAL: ${results.length}`);
+  for (const r of results) {
+    if (r.status === 'fail') log(`  FAIL: ${r.group} — ${r.error}`);
+  }
+  process.exit(fail > 0 ? 1 : 0);
+}
+
+main().catch(e => { log(`FATAL: ${e.message}`); process.exit(1); });
