@@ -15,27 +15,11 @@ function log(msg) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
-
 function pgrepRunning(name) {
   try {
     execSync(`pgrep -x ${name}`, { stdio: 'ignore' });
     return true;
   } catch { return false; }
-}
-
-function getGroups() {
-  if (primaryOnly) return [config.primaryGroup];
-  if (!fs.existsSync(savePath)) {
-    log(`ERROR: savePath does not exist: ${savePath}`);
-    process.exit(1);
-  }
-  return fs.readdirSync(savePath, { withFileTypes: true })
-    .filter(e => e.isDirectory() && e.name.startsWith('[LINE]'))
-    .map(e => e.name)
-    .filter(n => !(config.exclude || []).includes(n));
 }
 
 async function preflight(automation) {
@@ -49,7 +33,7 @@ async function preflight(automation) {
 }
 
 async function main() {
-  const mode = primaryOnly ? 'primary only' : 'all groups';
+  const mode = primaryOnly ? 'primary only' : 'all chats (click-through)';
   log(`=== LINE Export (${mode}) ===`);
   log(`savePath: ${savePath}`);
 
@@ -60,25 +44,33 @@ async function main() {
   await preflight(automation);
   log('Preflight OK');
 
-  const groups = getGroups();
-  log(`Groups to export: ${groups.length}`);
-  if (groups.length === 0) { log('Nothing to export.'); process.exit(0); }
+  let results;
 
-  const results = [];
-
-  for (const group of groups) {
+  if (primaryOnly) {
+    const group = config.primaryGroup;
     const groupDir = path.join(savePath, group);
     log(`--- ${group} ---`);
     try {
       const result = await automation.saveChatHistory(group, savePath, groupDir, config.maxPageUps || 30);
       log(`OK: ${result.fileName} (${result.fileSize} bytes, ${result.lineCount} lines, scrolled ${result.scrolled} pages)`);
-      results.push({ group, status: 'ok', ...result });
+      results = [{ name: group, status: 'ok', ...result }];
     } catch (e) {
       log(`FAIL: ${e.message}`);
-      results.push({ group, status: 'fail', error: e.message });
-    } finally {
-      try { await automation.automation.resetToMainWindow(); } catch {}
-      await sleep(config.cooldownMs || 3000);
+      results = [{ name: group, status: 'fail', error: e.message }];
+    }
+  } else {
+    log('Starting click-through export of all chats...');
+    results = await automation.exportAllByClickThrough(
+      savePath,
+      config.maxPageUps || 30,
+      config.cooldownMs || 3000
+    );
+    for (const r of results) {
+      if (r.status === 'ok') {
+        log(`OK: ${r.fileName} (${r.fileSize} bytes, ${r.lineCount} lines, scrolled ${r.scrolled} pages)`);
+      } else {
+        log(`FAIL: ${r.fileName || '?'} — ${r.error}`);
+      }
     }
   }
 
@@ -87,7 +79,7 @@ async function main() {
   const fail = results.filter(r => r.status === 'fail').length;
   log(`OK: ${ok}, FAIL: ${fail}, TOTAL: ${results.length}`);
   for (const r of results) {
-    if (r.status === 'fail') log(`  FAIL: ${r.group} — ${r.error}`);
+    if (r.status === 'fail') log(`  FAIL: ${r.fileName || r.name || '?'} — ${r.error}`);
   }
   process.exit(fail > 0 ? 1 : 0);
 }

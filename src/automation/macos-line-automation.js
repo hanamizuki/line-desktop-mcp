@@ -550,15 +550,27 @@ export class MacOSLineAutomation {
     const script = `
       tell application "System Events"
         tell process "${this.appleEsc(this.lineProcessName)}"
-          set lineWin to window 1
-          set {xPosition, yPosition} to position of lineWin
-          set {xSize, ySize} to size of lineWin
+          set bestW to missing value
+          set bestArea to 0
+          repeat with w in windows
+            set {ww, wh} to size of w
+            if ww > 200 and wh > 200 then
+              set area to ww * wh
+              if area > bestArea then
+                set bestArea to area
+                set bestW to w
+              end if
+            end if
+          end repeat
+          if bestW is missing value then set bestW to window 1
+          set {xPosition, yPosition} to position of bestW
+          set {xSize, ySize} to size of bestW
           return (xPosition as text) & "," & (yPosition as text) & "," & (xSize as text) & "," & (ySize as text)
         end tell
       end tell
     `;
     const r = await this.osa(script);
-    const [x, y, width, height] = r.split(',').map(Number);
+    const [x, y, width, height] = r.split(",").map(Number);
     return { x, y, width, height };
   }
 
@@ -856,6 +868,113 @@ export class MacOSLineAutomation {
 
     await this.pageUp(pageUps);
     return pageUps;
+  }
+
+  // === getChatListBounds ===
+  async getChatListBounds() {
+    const itemHeight = 71;
+    try {
+      const r = await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            set bestW to missing value
+            set bestArea to 0
+            repeat with w in windows
+              set {ww, wh} to size of w
+              if ww > 200 and wh > 200 then
+                set area to ww * wh
+                if area > bestArea then
+                  set bestArea to area
+                  set bestW to w
+                end if
+              end if
+            end repeat
+            if bestW is missing value then set bestW to window 1
+            set theList to list 1 of splitter group 1 of bestW
+            set {lx, ly} to position of theList
+            set {lw, lh} to size of theList
+            return (lx as text) & "," & (ly as text) & "," & (lw as text) & "," & (lh as text)
+          end tell
+        end tell
+      `);
+      const [x, y, width, height] = r.split(',').map(Number);
+      return { x, y, width, height, itemHeight, visibleItems: Math.floor(height / itemHeight) };
+    } catch {
+      const wb = await this.getWindowBounds();
+      const listHeight = Math.min(718, (wb.y + wb.height) - (wb.y + 101));
+      return {
+        x: wb.x + 62,
+        y: wb.y + 101,
+        width: Math.min(456, wb.width - 62),
+        height: listHeight,
+        itemHeight,
+        visibleItems: Math.floor(listHeight / itemHeight)
+      };
+    }
+  }
+
+  // === clickChatItem ===
+  async clickChatItem(listBounds, index) {
+    const x = listBounds.x + Math.floor(listBounds.width / 2);
+    const y = listBounds.y + index * listBounds.itemHeight + Math.floor(listBounds.itemHeight / 2);
+    execSync(`${this.cliclickPath} c:${x},${y}`);
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  // === scrollChatList ===
+  // === scrollChatList ===
+  async scrollChatList(listBounds, down = true) {
+    const x = listBounds.x + Math.floor(listBounds.width / 2);
+    const y = listBounds.y + Math.floor(listBounds.height / 2);
+    execSync(`${this.cliclickPath} c:${x},${y}`);
+    await new Promise(r => setTimeout(r, 300));
+    const delta = down ? -3 : 3;
+    const swift = `import CoreGraphics; import Foundation; for _ in 0..<25 { let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: ${delta}, wheel2: 0, wheel3: 0)!; e.location = CGPoint(x: ${x}, y: ${y}); e.post(tap: .cghidEventTap); Thread.sleep(forTimeInterval: 0.03) }`;
+    execSync(`swift -e '${swift}'`);
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  // === scrollChatListToTop ===
+  async scrollChatListToTop(listBounds) {
+    const x = listBounds.x + Math.floor(listBounds.width / 2);
+    const y = listBounds.y + Math.floor(listBounds.height / 2);
+    execSync(`${this.cliclickPath} c:${x},${y}`);
+    await new Promise(r => setTimeout(r, 300));
+    const swift = `import CoreGraphics; import Foundation; for _ in 0..<50 { let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: 3, wheel2: 0, wheel3: 0)!; e.location = CGPoint(x: ${x}, y: ${y}); e.post(tap: .cghidEventTap); Thread.sleep(forTimeInterval: 0.03) }`;
+    execSync(`swift -e '${swift}'`);
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  async readSaveDialogFilename() {
+    return await this.osa(`
+      tell application "System Events"
+        tell process "${this.appleEsc(this.lineProcessName)}"
+          return value of text field "儲存為：" of splitter group 1 of sheet 1 of window 1
+        end tell
+      end tell
+    `);
+  }
+
+  // === cancelSaveDialog ===
+  async cancelSaveDialog() {
+    try {
+      await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            click button "取消" of splitter group 1 of sheet 1 of window 1
+          end tell
+        end tell
+      `);
+    } catch {
+      await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            key code 53
+          end tell
+        end tell
+      `);
+    }
+    await new Promise(r => setTimeout(r, 500));
   }
 
 }

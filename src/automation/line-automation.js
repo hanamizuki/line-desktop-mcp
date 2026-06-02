@@ -112,4 +112,85 @@ export class LineAutomation {
     const result = await this.automation.waitForFileComplete(filePath, 30000, exportStartTime);
     return { ...result, scrolled };
   }
+
+  async exportAllByClickThrough(savePath, maxPageUps = 30, cooldownMs = 3000) {
+    await this.automation.switchToEnglish();
+    await this.automation.activateLine();
+
+    const listBounds = await this.automation.getChatListBounds();
+    await this.automation.scrollChatListToTop(listBounds);
+    const exportedNames = new Set();
+    const results = [];
+    const maxPages = 10;
+
+    for (let page = 0; page <= maxPages; page++) {
+      let newExportsThisPage = 0;
+      let consecutiveEmpty = 0;
+
+      for (let i = 0; i < listBounds.visibleItems; i++) {
+        await this.automation.clickChatItem(listBounds, i);
+
+        let peekedName;
+        try {
+          const peekMenu = await this.automation.openDotMenu();
+          await this.automation.clickSaveChat(peekMenu);
+          peekedName = await this.automation.readSaveDialogFilename();
+          await this.automation.cancelSaveDialog();
+          consecutiveEmpty = 0;
+        } catch (e) {
+          consecutiveEmpty++;
+          if (consecutiveEmpty >= 3) break;
+          try { await this.automation.resetToMainWindow(); } catch {}
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+
+        if (exportedNames.has(peekedName)) {
+          try { await this.automation.resetToMainWindow(); } catch {}
+          await new Promise(r => setTimeout(r, 300));
+          continue;
+        }
+
+        const groupDir = path.join(savePath, peekedName.replace(/\.txt$/, ''));
+        try {
+          const scrolled = await this.automation.scrollToLoadHistory(groupDir, maxPageUps);
+
+          const exportStartTime = Date.now();
+          let menuBounds;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              menuBounds = await this.automation.openDotMenu();
+              await this.automation.clickSaveChat(menuBounds);
+              break;
+            } catch (e) {
+              if (attempt === 1) throw e;
+              await this.automation.resetToMainWindow();
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
+
+          const fileName = await this.automation.handleSaveDialog(savePath);
+          const filePath = savePath.endsWith('/') ? savePath + fileName : savePath + '/' + fileName;
+          const result = await this.automation.waitForFileComplete(filePath, 30000, exportStartTime);
+
+          exportedNames.add(peekedName);
+          results.push({ fileName, status: 'ok', ...result, scrolled });
+          newExportsThisPage++;
+        } catch (e) {
+          results.push({ fileName: peekedName, status: 'fail', error: e.message });
+        }
+
+        try { await this.automation.resetToMainWindow(); } catch {}
+        await new Promise(r => setTimeout(r, cooldownMs));
+      }
+
+      if (newExportsThisPage === 0) break;
+
+      if (page < maxPages) {
+        await this.automation.scrollChatList(listBounds);
+      }
+    }
+
+    return results;
+  }
 }
