@@ -35,7 +35,7 @@ function sleep(ms) {
 
 function pgrepRunning(processName) {
   try {
-    execSync(, { stdio: 'ignore' });
+    execSync(`pgrep -x ${processName}`, { stdio: "ignore" });
     return true;
   } catch {
     return false;
