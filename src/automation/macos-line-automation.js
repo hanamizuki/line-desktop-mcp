@@ -778,7 +778,7 @@ export class MacOSLineAutomation {
       await this.osa(`
         tell application "System Events"
           tell process "${this.appleEsc(this.lineProcessName)}"
-            click button "取代" of splitter group 1 of sheet 1 of window 1
+            click button "取代" of sheet 1 of sheet 1 of window 1
           end tell
         end tell
       `);
@@ -790,7 +790,7 @@ export class MacOSLineAutomation {
   }
 
   // === waitForFileComplete ===
-  async waitForFileComplete(filePath, timeout = 30000) {
+  async waitForFileComplete(filePath, timeout = 30000, startTime = Date.now()) {
     const deadline = Date.now() + timeout;
     let lastSize = -1;
     let stableCount = 0;
@@ -802,7 +802,7 @@ export class MacOSLineAutomation {
         const stat = fs.statSync(filePath);
         const currentSize = stat.size;
 
-        if (currentSize > 0 && currentSize === lastSize) {
+        if (currentSize > 0 && currentSize === lastSize && stat.mtimeMs >= startTime) {
           stableCount++;
           if (stableCount >= 2) {
             // File size stable for 2 consecutive checks

@@ -119,6 +119,7 @@ export class LineAutomation {
 
     const scrolled = await this.automation.scrollToLoadHistory(groupDir, maxPageUps);
 
+    const exportStartTime = Date.now();
     // Try openDotMenu + clickSaveChat with retry (up to 2 attempts)
     let menuBounds;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -140,7 +141,7 @@ export class LineAutomation {
       ? savePath + fileName
       : savePath + "/" + fileName;
 
-    const result = await this.automation.waitForFileComplete(filePath);
+    const result = await this.automation.waitForFileComplete(filePath, 30000, exportStartTime);
     return { ...result, scrolled };
   }
 
