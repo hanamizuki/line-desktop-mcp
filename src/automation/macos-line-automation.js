@@ -929,7 +929,7 @@ export class MacOSLineAutomation {
     execSync(`${this.cliclickPath} c:${x},${y}`);
     await new Promise(r => setTimeout(r, 300));
     const delta = down ? -3 : 3;
-    const swift = `import CoreGraphics; import Foundation; for _ in 0..<25 { let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: ${delta}, wheel2: 0, wheel3: 0)!; e.location = CGPoint(x: ${x}, y: ${y}); e.post(tap: .cghidEventTap); Thread.sleep(forTimeInterval: 0.03) }`;
+    const swift = `import CoreGraphics; import Foundation; for _ in 0..<10 { let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: ${delta}, wheel2: 0, wheel3: 0)!; e.location = CGPoint(x: ${x}, y: ${y}); e.post(tap: .cghidEventTap); Thread.sleep(forTimeInterval: 0.03) }`;
     execSync(`swift -e '${swift}'`);
     await new Promise(r => setTimeout(r, 1500));
   }

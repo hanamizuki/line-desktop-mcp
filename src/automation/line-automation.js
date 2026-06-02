@@ -130,12 +130,30 @@ export class LineAutomation {
       for (let i = 0; i < listBounds.visibleItems; i++) {
         await this.automation.clickChatItem(listBounds, i);
 
-        // 1. Scroll first to load history
-        await this.automation.scrollToLoadHistory(null, maxPageUps);
-
-        // 2. Open save dialog (single time)
+        // Peek: read filename via save dialog, then cancel
         let peekedName;
         try {
+          const peekMenu = await this.automation.openDotMenu();
+          await this.automation.clickSaveChat(peekMenu);
+          peekedName = await this.automation.readSaveDialogFilename();
+          await this.automation.cancelSaveDialog();
+        } catch (e) {
+          try { await this.automation.resetToMainWindow(); } catch {}
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+
+        if (exportedNames.has(peekedName)) {
+          try { await this.automation.resetToMainWindow(); } catch {}
+          await new Promise(r => setTimeout(r, 300));
+          continue;
+        }
+
+        // New chat: scroll history, then save
+        const groupDir = path.join(savePath, peekedName.replace(/\.txt$/, ''));
+        try {
+          const scrolled = await this.automation.scrollToLoadHistory(groupDir, maxPageUps);
+
           const exportStartTime = Date.now();
           let menuBounds;
           for (let attempt = 0; attempt < 2; attempt++) {
@@ -150,32 +168,15 @@ export class LineAutomation {
             }
           }
 
-          // 3. Read filename from the open save dialog
-          peekedName = await this.automation.readSaveDialogFilename();
-
-          // 4. Duplicate? Cancel and skip
-          if (exportedNames.has(peekedName)) {
-            await this.automation.cancelSaveDialog();
-            try { await this.automation.resetToMainWindow(); } catch {}
-            await new Promise(r => setTimeout(r, 300));
-            continue;
-          }
-
-          // 5. New chat — save directly (dialog is already open)
           const fileName = await this.automation.handleSaveDialog(savePath);
           const filePath = savePath.endsWith('/') ? savePath + fileName : savePath + '/' + fileName;
           const result = await this.automation.waitForFileComplete(filePath, 30000, exportStartTime);
 
           exportedNames.add(peekedName);
-          results.push({ fileName, status: 'ok', ...result, scrolled: maxPageUps });
+          results.push({ fileName, status: 'ok', ...result, scrolled });
           newExportsThisPage++;
         } catch (e) {
-          if (peekedName) {
-            results.push({ fileName: peekedName, status: 'fail', error: e.message });
-          }
-          try { await this.automation.resetToMainWindow(); } catch {}
-          await new Promise(r => setTimeout(r, 500));
-          continue;
+          results.push({ fileName: peekedName, status: 'fail', error: e.message });
         }
 
         try { await this.automation.resetToMainWindow(); } catch {}
