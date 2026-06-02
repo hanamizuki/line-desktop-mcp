@@ -195,6 +195,59 @@ export class LineAutomation {
       }
     }
 
+    // Verification pass: scroll back to top, re-check top items for reorder
+    await this.automation.scrollChatListToTop(listBounds);
+    const recheckCount = Math.min(5, listBounds.visibleItems);
+    for (let i = 0; i < recheckCount; i++) {
+      await this.automation.clickChatItem(listBounds, i);
+
+      let peekedName;
+      try {
+        const peekMenu = await this.automation.openDotMenu();
+        await this.automation.clickSaveChat(peekMenu);
+        peekedName = await this.automation.readSaveDialogFilename();
+        await this.automation.cancelSaveDialog();
+      } catch (e) {
+        try { await this.automation.resetToMainWindow(); } catch {}
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+
+      if (exportedNames.has(peekedName)) {
+        try { await this.automation.resetToMainWindow(); } catch {}
+        await new Promise(r => setTimeout(r, 300));
+        continue;
+      }
+
+      const groupDir = path.join(savePath, peekedName.replace(/\.txt$/, ''));
+      try {
+        const scrolled = await this.automation.scrollToLoadHistory(groupDir, maxPageUps);
+        const exportStartTime = Date.now();
+        let menuBounds;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            menuBounds = await this.automation.openDotMenu();
+            await this.automation.clickSaveChat(menuBounds);
+            break;
+          } catch (e) {
+            if (attempt === 1) throw e;
+            await this.automation.resetToMainWindow();
+            await new Promise(r => setTimeout(r, 500));
+          }
+        }
+        const fileName = await this.automation.handleSaveDialog(savePath);
+        const filePath = savePath.endsWith('/') ? savePath + fileName : savePath + '/' + fileName;
+        const result = await this.automation.waitForFileComplete(filePath, 30000, exportStartTime);
+        exportedNames.add(peekedName);
+        results.push({ fileName, status: 'ok', ...result, scrolled, recheck: true });
+      } catch (e) {
+        results.push({ fileName: peekedName, status: 'fail', error: e.message, recheck: true });
+      }
+
+      try { await this.automation.resetToMainWindow(); } catch {}
+      await new Promise(r => setTimeout(r, cooldownMs));
+    }
+
     return results;
   }
 }
