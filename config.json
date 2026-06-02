@@ -1,0 +1,7 @@
+{
+  "primaryGroup": "[LINE]mojo 猛健樂交流群",
+  "exclude": [],
+  "savePath": "~/Agents/mojo/data/line-exports",
+  "maxPageUps": 30,
+  "cooldownMs": 3000
+}
