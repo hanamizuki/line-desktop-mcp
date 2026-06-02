@@ -825,4 +825,37 @@ export class MacOSLineAutomation {
     throw new Error(`waitForFileComplete: timed out waiting for file: ${filePath}`);
   }
 
+
+  // === scrollToLoadHistory ===
+  async scrollToLoadHistory(groupDir, maxPageUps = 30) {
+    let pageUps = maxPageUps;
+
+    try {
+      const rawDir = `${groupDir}/raw`;
+      if (fs.existsSync(rawDir)) {
+        const files = fs.readdirSync(rawDir)
+          .filter(f => f.endsWith('.txt'))
+          .sort();
+
+        if (files.length > 0) {
+          const latestFile = files[files.length - 1];
+          // Extract date from filename (YYYY-MM-DD.txt)
+          const dateMatch = latestFile.match(/^(\d{4}-\d{2}-\d{2})\.txt$/);
+          if (dateMatch) {
+            const lastDate = new Date(dateMatch[1]);
+            const now = new Date();
+            const daysSince = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
+            pageUps = Math.min(Math.max(10, (daysSince + 1) * 3), maxPageUps);
+          }
+        }
+      }
+    } catch {
+      // Use maxPageUps on any error
+      pageUps = maxPageUps;
+    }
+
+    await this.pageUp(pageUps);
+    return pageUps;
+  }
+
 }

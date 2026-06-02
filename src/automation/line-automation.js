@@ -98,4 +98,38 @@ export class LineAutomation {
   async activateLine() {
     return await this.automation.activateLine();
   }
+
+  async saveChatHistory(chatName, savePath, groupDir, maxPageUps = 30) {
+    await this.automation.switchToEnglish();
+    await this.automation.activateLine();
+    const ok = await this.automation.selectChat(chatName);
+    if (!ok) throw new Error(`Chat "${chatName}" not found`);
+
+    const scrolled = await this.automation.scrollToLoadHistory(groupDir, maxPageUps);
+
+    // Try openDotMenu + clickSaveChat with retry (up to 2 attempts)
+    let menuBounds;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        menuBounds = await this.automation.openDotMenu();
+        await this.automation.clickSaveChat(menuBounds);
+        break; // success
+      } catch (e) {
+        if (attempt === 1) throw e;
+        // Reset and retry
+        await this.automation.resetToMainWindow();
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    const fileName = await this.automation.handleSaveDialog(savePath);
+
+    const filePath = savePath.endsWith("/")
+      ? savePath + fileName
+      : savePath + "/" + fileName;
+
+    const result = await this.automation.waitForFileComplete(filePath);
+    return { ...result, scrolled };
+  }
+
 }
