@@ -562,4 +562,95 @@ export class MacOSLineAutomation {
     return { x, y, width, height };
   }
 
+
+  // === resetToMainWindow ===
+  async resetToMainWindow() {
+    for (let i = 0; i < 5; i++) {
+      const countScript = `
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            return (count of windows) as text
+          end tell
+        end tell
+      `;
+      const count = parseInt(await this.osa(countScript), 10);
+      if (count <= 1) return;
+
+      const escScript = `
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            key code 53
+          end tell
+        end tell
+      `;
+      await this.osa(escScript);
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+
+  // === openDotMenu ===
+  async openDotMenu() {
+    const bounds = await this.getWindowBounds();
+    const dotX = bounds.x + bounds.width - 20;
+    const dotY = bounds.y + 83;
+    const midX = bounds.x + Math.floor(bounds.width / 2);
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // Record window count before click
+      const beforeCount = parseInt(await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            return (count of windows) as text
+          end tell
+        end tell
+      `), 10);
+
+      // Click the dot menu button
+      execSync(`${this.cliclickPath} c:${dotX},${dotY}`);
+
+      // Poll for new window (max 3s, every 300ms)
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 300));
+        const windowInfo = await this.osa(`
+          tell application "System Events"
+            tell process "${this.appleEsc(this.lineProcessName)}"
+              set wCount to count of windows
+              if wCount > ${beforeCount} then
+                set results to ""
+                repeat with i from 1 to wCount
+                  set w to window i
+                  set {wx, wy} to position of w
+                  set {ww, wh} to size of w
+                  set results to results & wx & "," & wy & "," & ww & "," & wh & "|"
+                end repeat
+                return results
+              end if
+              return "none"
+            end tell
+          end tell
+        `);
+
+        if (windowInfo !== 'none' && windowInfo !== '') {
+          // Parse all windows, find the new popup
+          const windows = windowInfo.split('|').filter(s => s.length > 0);
+          for (const w of windows) {
+            const [wx, wy, ww, wh] = w.split(',').map(Number);
+            if (wx > midX && wh > 200) {
+              return { x: wx, y: wy, width: ww, height: wh };
+            }
+          }
+        }
+      }
+
+      // First attempt failed, reset and retry
+      if (attempt === 0) {
+        await this.resetToMainWindow();
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
+    throw new Error('openDotMenu: no popup window appeared after 2 attempts');
+  }
+
 }
