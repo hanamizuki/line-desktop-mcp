@@ -34,43 +34,21 @@ export class LineAutomation {
   }
 
   async getChatHistory(chatName, date, messageLimit = 100, pageUpTimes = 10) {
-
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
-    const searchName = chatName.replace(/^[LINE]/, "");
-    const ok = await this.automation.selectChat(searchName);
-
+    const ok = await this.automation.selectChat(chatName);
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
 
-    // Clear search overlay left by selectChat
-    await this.automation.osa("tell application \"System Events\" to key code 53");
-    await new Promise(r => setTimeout(r, 1000));
-
     await this.automation.pageUp(pageUpTimes);
-
     const chatHistory = await this.automation.copyAllChatToClipboard();
 
-    if ( process.env.CHAT_LOG_ON==='true' ) {
+    if (process.env.CHAT_LOG_ON === 'true') {
       try {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        // Remove only filesystem-unsafe characters, preserve CJK characters
         const safeChatName = chatName.replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_');
         const fileName = `${safeChatName}_${timestamp}.txt`;
-        
-        let logDir = '';
-
-        if( process.env.CHAT_LOG_PATH ) {
-           logDir = process.env.CHAT_LOG_PATH;
-        }
-        else
-        {
-           logDir = path.join(process.cwd(), 'logs');
-        }
-
-        if (!fs.existsSync(logDir)) {
-          fs.mkdirSync(logDir, { recursive: true });
-        }
-
+        const logDir = process.env.CHAT_LOG_PATH || path.join(process.cwd(), 'logs');
+        if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
         const logFilePath = path.join(logDir, fileName);
         fs.writeFileSync(logFilePath, chatHistory);
         console.error(`Chat history saved to ${logFilePath}`);
@@ -78,22 +56,14 @@ export class LineAutomation {
         console.error('Failed to write chat history to log file:', error);
       }
     }
-
     return chatHistory;
   }
 
   async sendChatMessage(chatName, message, autoSend = false) {
-
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
-    const searchName = chatName.replace(/^[LINE]/, "");
-    const ok = await this.automation.selectChat(searchName);
+    const ok = await this.automation.selectChat(chatName);
     if (!ok) throw new Error(`Chat "${chatName}" not found`);
-
-    // Clear search overlay left by selectChat
-    await this.automation.osa("tell application \"System Events\" to key code 53");
-    await new Promise(r => setTimeout(r, 1000));
-
     return await this.automation.sendMessage(chatName, message, autoSend);
   }
 
@@ -112,40 +82,34 @@ export class LineAutomation {
   async saveChatHistory(chatName, savePath, groupDir, maxPageUps = 30) {
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
-    const searchName = chatName.replace(/^[LINE]/, "");
+
+    const searchName = chatName.replace(/^\[LINE\]/, '');
     const ok = await this.automation.selectChat(searchName);
-    if (!ok) throw new Error(`Chat "${chatName}" not found`);
+    if (!ok) throw new Error(`Chat "${searchName}" not found`);
 
     // Clear search overlay left by selectChat
-    await this.automation.osa("tell application \"System Events\" to key code 53");
+    await this.automation.osa('tell application "System Events" to key code 53');
     await new Promise(r => setTimeout(r, 1000));
 
     const scrolled = await this.automation.scrollToLoadHistory(groupDir, maxPageUps);
 
     const exportStartTime = Date.now();
-    // Try openDotMenu + clickSaveChat with retry (up to 2 attempts)
     let menuBounds;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         menuBounds = await this.automation.openDotMenu();
         await this.automation.clickSaveChat(menuBounds);
-        break; // success
+        break;
       } catch (e) {
         if (attempt === 1) throw e;
-        // Reset and retry
         await this.automation.resetToMainWindow();
         await new Promise(r => setTimeout(r, 500));
       }
     }
 
     const fileName = await this.automation.handleSaveDialog(savePath);
-
-    const filePath = savePath.endsWith("/")
-      ? savePath + fileName
-      : savePath + "/" + fileName;
-
+    const filePath = savePath.endsWith('/') ? savePath + fileName : savePath + '/' + fileName;
     const result = await this.automation.waitForFileComplete(filePath, 30000, exportStartTime);
     return { ...result, scrolled };
   }
-
 }
