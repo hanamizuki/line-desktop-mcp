@@ -122,10 +122,10 @@ export class LineAutomation {
     const exportedNames = new Set();
     const results = [];
     const maxPages = 10;
+    let pagesWithoutNew = 0;
 
     for (let page = 0; page <= maxPages; page++) {
       let newExportsThisPage = 0;
-      let consecutiveEmpty = 0;
 
       for (let i = 0; i < listBounds.visibleItems; i++) {
         await this.automation.clickChatItem(listBounds, i);
@@ -136,10 +136,7 @@ export class LineAutomation {
           await this.automation.clickSaveChat(peekMenu);
           peekedName = await this.automation.readSaveDialogFilename();
           await this.automation.cancelSaveDialog();
-          consecutiveEmpty = 0;
         } catch (e) {
-          consecutiveEmpty++;
-          if (consecutiveEmpty >= 3) break;
           try { await this.automation.resetToMainWindow(); } catch {}
           await new Promise(r => setTimeout(r, 500));
           continue;
@@ -184,7 +181,12 @@ export class LineAutomation {
         await new Promise(r => setTimeout(r, cooldownMs));
       }
 
-      if (newExportsThisPage === 0) break;
+      if (newExportsThisPage > 0) {
+        pagesWithoutNew = 0;
+      } else {
+        pagesWithoutNew++;
+        if (pagesWithoutNew >= 3) break;
+      }
 
       if (page < maxPages) {
         await this.automation.scrollChatList(listBounds);
