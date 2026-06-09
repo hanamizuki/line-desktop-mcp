@@ -586,7 +586,7 @@ export class MacOSLineAutomation {
         end tell
       `;
       const count = parseInt(await this.osa(countScript), 10);
-      if (count <= 1) return;
+      if (count <= 1) break;
 
       const escScript = `
         tell application "System Events"
@@ -598,6 +598,36 @@ export class MacOSLineAutomation {
       await this.osa(escScript);
       await new Promise(r => setTimeout(r, 300));
     }
+    await this.dismissLingeringSheets();
+  }
+
+  // === dismissLingeringSheets ===
+  async dismissLingeringSheets() {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const state = await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            try
+              set s to sheet 1 of window 1
+              return "has_sheet"
+            on error
+              return "clean"
+            end try
+          end tell
+        end tell
+      `);
+      if (state === 'clean') return false;
+      console.error('[dismissLingeringSheets] found stale sheet, pressing Escape (attempt ' + (attempt + 1) + ')');
+      await this.osa(`
+        tell application "System Events"
+          tell process "${this.appleEsc(this.lineProcessName)}"
+            key code 53
+          end tell
+        end tell
+      `);
+      await new Promise(r => setTimeout(r, 500));
+    }
+    return true;
   }
 
   // === openDotMenu ===

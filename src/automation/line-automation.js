@@ -79,6 +79,10 @@ export class LineAutomation {
     return await this.automation.activateLine();
   }
 
+  async dismissLingeringSheets() {
+    return await this.automation.dismissLingeringSheets();
+  }
+
   async saveChatHistory(chatName, savePath, groupDir, maxPageUps = 30) {
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
@@ -116,6 +120,9 @@ export class LineAutomation {
   async exportAllByClickThrough(savePath, maxPageUps = 30, cooldownMs = 3000) {
     await this.automation.switchToEnglish();
     await this.automation.activateLine();
+    if (await this.automation.dismissLingeringSheets()) {
+      console.error('[exportAllByClickThrough] dismissed stale sheet/dialog before starting');
+    }
 
     const listBounds = await this.automation.getChatListBounds();
     await this.automation.scrollChatListToTop(listBounds);
@@ -138,6 +145,7 @@ export class LineAutomation {
           peekedName = await this.automation.readSaveDialogFilename();
           await this.automation.cancelSaveDialog();
         } catch (e) {
+          console.error(`[peek-fail] page=${page} item=${i}: ${e.message}`);
           try { await this.automation.resetToMainWindow(); } catch {}
           await new Promise(r => setTimeout(r, 500));
           continue;
@@ -208,6 +216,7 @@ export class LineAutomation {
         peekedName = await this.automation.readSaveDialogFilename();
         await this.automation.cancelSaveDialog();
       } catch (e) {
+        console.error(`[recheck-peek-fail] item=${i}: ${e.message}`);
         try { await this.automation.resetToMainWindow(); } catch {}
         await new Promise(r => setTimeout(r, 500));
         continue;

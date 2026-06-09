@@ -30,6 +30,9 @@ async function preflight(automation) {
   } catch (e) {
     throw new Error(`Cannot access LINE window: ${e.message}`);
   }
+  if (await automation.automation.dismissLingeringSheets()) {
+    log('Preflight: dismissed lingering sheet/dialog from previous run');
+  }
 }
 
 async function main() {
